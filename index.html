@@ -554,6 +554,12 @@
 </head>
 <body>
 
+<script>
+  if (localStorage.getItem('db_cached') === 'true') {
+    document.write('<style>#db-loader-overlay { display: none !important; }</style>');
+  }
+</script>
+
 <!-- Database Loader Overlay -->
 <div id="db-loader-overlay" class="db-loader-overlay">
   <div class="db-loader-card">
@@ -737,6 +743,7 @@
     // 1. Check if database is already cached in IndexedDB
     let raw = await idbGet('results');
     if (raw) {
+      localStorage.setItem('db_cached', 'true');
       // Already cached! Initialize index in background & remove overlay instantly.
       const idx = [];
       for (const id in raw) {
@@ -745,15 +752,15 @@
       }
       searchIndex = idx;
       if (overlay) {
-        overlay.classList.add('fade-out');
-        setTimeout(() => overlay.remove(), 500);
+        overlay.remove();
       }
       return;
     }
 
-    // 2. Not cached. Show overlay & fetch with progress.
+    // 2. Not cached. Ensure flag is removed and show overlay.
+    localStorage.removeItem('db_cached');
     if (overlay) {
-      overlay.style.display = 'flex';
+      overlay.style.setProperty('display', 'flex', 'important');
     }
 
     async function doDownload() {
@@ -809,6 +816,7 @@
 
         // Cache database
         await idbSet('results', rawData);
+        localStorage.setItem('db_cached', 'true');
 
         // Build index
         const idx = [];
