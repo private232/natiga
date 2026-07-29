@@ -365,9 +365,221 @@
   }
 
   :focus-visible{ outline:2.5px solid var(--gold); outline-offset:2px; }
+
+  /* Database Loading Screen styles */
+  .db-loader-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: radial-gradient(circle at center, #173e4d 0%, #091e28 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    transition: opacity 0.5s ease, visibility 0.5s ease;
+  }
+
+  .db-loader-overlay.fade-out {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  .db-loader-card {
+    width: 100%;
+    max-width: 480px;
+    background: rgba(255, 255, 255, 0.07);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 24px;
+    padding: 40px 30px;
+    text-align: center;
+    box-shadow: 0 30px 60px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+    animation: dbCardEntrance 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @keyframes dbCardEntrance {
+    from { opacity: 0; transform: scale(0.9) translateY(20px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  .db-loader-logo {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    border: 3px solid var(--gold);
+    background: #ffffff;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+    margin-bottom: 24px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .db-loader-logo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .db-loader-title {
+    font-family: 'Cairo', sans-serif;
+    font-size: 20px;
+    font-weight: 700;
+    margin: 0 0 12px;
+    color: #ffffff;
+    line-height: 1.4;
+  }
+
+  .db-loader-subtitle {
+    font-size: 14px;
+    color: #b2dfdb;
+    margin: 0 0 30px;
+    line-height: 1.6;
+  }
+
+  .db-loader-progress-container {
+    width: 100%;
+    margin-bottom: 20px;
+  }
+
+  .db-loader-progress-bar-wrapper {
+    width: 100%;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.2);
+  }
+
+  .db-loader-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--gold) 0%, #ffd54f 100%);
+    border-radius: 10px;
+    width: 0%;
+    transition: width 0.1s ease;
+    position: relative;
+    box-shadow: 0 0 10px rgba(169, 130, 27, 0.5);
+  }
+
+  .db-loader-progress-fill::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(
+      90deg,
+      rgba(255,255,255,0) 0%,
+      rgba(255,255,255,0.4) 50%,
+      rgba(255,255,255,0) 100%
+    );
+    animation: dbShine 1.5s infinite linear;
+    background-size: 200% 100%;
+  }
+
+  @keyframes dbShine {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+
+  .db-loader-stats {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 10px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .db-loader-percentage {
+    color: var(--gold);
+    font-family: 'Cairo', sans-serif;
+    font-size: 16px;
+  }
+
+  .db-loader-bytes {
+    color: #80cbc4;
+    direction: ltr;
+  }
+
+  .db-loader-error {
+    margin-top: 24px;
+    padding: 16px;
+    background: rgba(140, 45, 45, 0.2);
+    border: 1px solid rgba(140, 45, 45, 0.4);
+    border-radius: 12px;
+    animation: dbShake 0.4s ease both;
+  }
+
+  @keyframes dbShake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-6px); }
+    75% { transform: translateX(6px); }
+  }
+
+  .db-loader-error p {
+    margin: 0 0 12px;
+    font-size: 13.5px;
+    color: #ff8a80;
+  }
+
+  .db-loader-retry-btn {
+    background: var(--gold);
+    color: white;
+    border: none;
+    padding: 8px 24px;
+    border-radius: 8px;
+    font-family: 'Cairo', sans-serif;
+    font-weight: 700;
+    font-size: 13.5px;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 4px 10px rgba(169, 130, 27, 0.3);
+  }
+
+  .db-loader-retry-btn:hover {
+    background: #c59820;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 14px rgba(169, 130, 27, 0.4);
+  }
+
+  .db-loader-retry-btn:active {
+    transform: translateY(0);
+  }
 </style>
 </head>
 <body>
+
+<!-- Database Loader Overlay -->
+<div id="db-loader-overlay" class="db-loader-overlay">
+  <div class="db-loader-card">
+    <div class="db-loader-logo">
+      <img src="https://firebasestorage.googleapis.com/v0/b/amgg-81ac3.firebasestorage.app/o/photo_2025-10-15_16-42-23%20-%20Copy.jpg?alt=media&token=069ae4d2-c012-44d5-8f32-e8e750bbc857" class="logo-img" alt="AMG Logo">
+    </div>
+    <h2 class="db-loader-title">جاري تهيئة قاعدة البيانات للبحث السريع</h2>
+    <p class="db-loader-subtitle">يتم تحميل قاعدة البيانات حالياً لتتمكن من البحث بالاسم والترتيب فوراً دون انتظار.</p>
+    
+    <div class="db-loader-progress-container">
+      <div class="db-loader-progress-bar-wrapper">
+        <div id="db-loader-progress-fill" class="db-loader-progress-fill"></div>
+      </div>
+      <div class="db-loader-stats">
+        <span id="db-loader-percentage" class="db-loader-percentage">0%</span>
+        <span id="db-loader-bytes" class="db-loader-bytes">0 MB / 0 MB</span>
+      </div>
+    </div>
+
+    <!-- Error State -->
+    <div id="db-loader-error" class="db-loader-error" style="display: none;">
+      <p id="db-loader-error-msg">فشل تحميل قاعدة البيانات. تأكد من اتصالك بالإنترنت.</p>
+      <button id="db-loader-retry-btn" class="db-loader-retry-btn">إعادة المحاولة</button>
+    </div>
+  </div>
+</div>
 
 <div class="sheet">
   <header class="hero">
@@ -403,7 +615,7 @@
       </svg>
     </div>
     <div class="hint" id="nameHint" style="display:none;">
-      اكتب أي جزء من الاسم ولو من المنتصف (الاسم)، وستظهر كل الأسماء المطابقة لتختار منها.
+      اكتب أي جزء من الاسم ولو من المنتصف، وستظهر كل الأسماء المطابقة لتختار منها.
     </div>
 
     <div class="status-line" id="statusLine"></div>
@@ -511,33 +723,130 @@
     } catch(e){ /* caching is best-effort */ }
   }
 
-  async function ensureSearchIndex(onStatus){
-    if (searchIndex) return searchIndex;
-    if (indexLoadingPromise) return indexLoadingPromise;
+  let dbLoadPromise = null;
 
-    indexLoadingPromise = (async () => {
-      let raw = await idbGet('results');
-      if (!raw) {
-        if (onStatus) onStatus('جاري تحميل فهرس الأسماء لأول مرة (مرة واحدة فقط)، برجاء الانتظار...');
-        const resp = await fetch(firebaseConfig.databaseURL + '/results.json');
-        if (!resp.ok) throw new Error('index fetch failed: ' + resp.status);
-        raw = await resp.json();
-        idbSet('results', raw); // best-effort, don't block on it
-      }
+  async function initDatabase() {
+    const overlay = document.getElementById('db-loader-overlay');
+    const progressFill = document.getElementById('db-loader-progress-fill');
+    const percentageText = document.getElementById('db-loader-percentage');
+    const bytesText = document.getElementById('db-loader-bytes');
+    const errorDiv = document.getElementById('db-loader-error');
+    const errorMsg = document.getElementById('db-loader-error-msg');
+    const retryBtn = document.getElementById('db-loader-retry-btn');
+
+    // 1. Check if database is already cached in IndexedDB
+    let raw = await idbGet('results');
+    if (raw) {
+      // Already cached! Initialize index in background & remove overlay instantly.
       const idx = [];
       for (const id in raw) {
         const rec = raw[id];
         idx.push({ id, rec, norm: normalizeArabic(rec[0]) });
       }
       searchIndex = idx;
-      return idx;
-    })();
-
-    try {
-      return await indexLoadingPromise;
-    } finally {
-      indexLoadingPromise = null;
+      if (overlay) {
+        overlay.classList.add('fade-out');
+        setTimeout(() => overlay.remove(), 500);
+      }
+      return;
     }
+
+    // 2. Not cached. Show overlay & fetch with progress.
+    if (overlay) {
+      overlay.style.display = 'flex';
+    }
+
+    async function doDownload() {
+      errorDiv.style.display = 'none';
+      progressFill.style.width = '0%';
+      percentageText.textContent = '0%';
+      bytesText.textContent = '0 MB / 0 MB';
+
+      try {
+        const url = firebaseConfig.databaseURL + '/results.json';
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error('HTTP error! status: ' + response.status);
+        }
+
+        const contentLength = response.headers.get('content-length');
+        // Firebase JSON database Content-Length is exactly 65,951,380 bytes
+        let totalBytes = contentLength ? parseInt(contentLength, 10) : 65951380;
+
+        const reader = response.body.getReader();
+        let receivedBytes = 0;
+        let chunks = [];
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          chunks.push(value);
+          receivedBytes += value.length;
+
+          let percent = Math.min(99, Math.floor((receivedBytes / totalBytes) * 100));
+          
+          progressFill.style.width = percent + '%';
+          percentageText.textContent = percent + '%';
+          bytesText.textContent = `${(receivedBytes / (1024 * 1024)).toFixed(2)} MB / ${(totalBytes / (1024 * 1024)).toFixed(2)} MB`;
+        }
+
+        progressFill.style.width = '100%';
+        percentageText.textContent = '100%';
+        bytesText.textContent = `${(receivedBytes / (1024 * 1024)).toFixed(2)} MB / ${(receivedBytes / (1024 * 1024)).toFixed(2)} MB`;
+
+        // Combine chunks
+        let allChunks = new Uint8Array(receivedBytes);
+        let position = 0;
+        for (let chunk of chunks) {
+          allChunks.set(chunk, position);
+          position += chunk.length;
+        }
+
+        const decoder = new TextDecoder("utf-8");
+        const jsonText = decoder.decode(allChunks);
+        const rawData = JSON.parse(jsonText);
+
+        // Cache database
+        await idbSet('results', rawData);
+
+        // Build index
+        const idx = [];
+        for (const id in rawData) {
+          const rec = rawData[id];
+          idx.push({ id, rec, norm: normalizeArabic(rec[0]) });
+        }
+        searchIndex = idx;
+
+        // Dismiss overlay
+        if (overlay) {
+          overlay.classList.add('fade-out');
+          setTimeout(() => overlay.remove(), 500);
+        }
+
+      } catch (error) {
+        console.error('Failed to load database:', error);
+        errorMsg.textContent = 'حدث خطأ أثناء تحميل قاعدة البيانات: ' + error.message;
+        errorDiv.style.display = 'block';
+      }
+    }
+
+    retryBtn.onclick = doDownload;
+    await doDownload();
+  }
+
+  // Start initialization immediately
+  dbLoadPromise = initDatabase();
+
+  async function ensureSearchIndex() {
+    if (searchIndex) return searchIndex;
+    if (dbLoadPromise) {
+      await dbLoadPromise;
+      return searchIndex;
+    }
+    dbLoadPromise = initDatabase();
+    await dbLoadPromise;
+    return searchIndex;
   }
 
   tabs.forEach(tab => {
@@ -697,7 +1006,7 @@
     }
     showLoading();
     try {
-      const idx = await ensureSearchIndex(msg => showLoading(msg));
+      const idx = await ensureSearchIndex();
       const q = normalizeArabic(term);
       const matches = [];
       let hitCap = false;
