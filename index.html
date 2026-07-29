@@ -629,29 +629,10 @@
     <div class="results" id="results"></div>
   </div>
 
-  <footer>نتيجة رسمية مرتبطة مباشرة بقاعدة البيانات — يُحدَّث البحث فور الكتابة</footer>
+  <footer>عدد الطلاب في القاعدة: <span id="dbCount">—</span> · النتيجة استرشادية، المرجع الرسمي هو وزارة التربية والتعليم.</footer>
 </div>
 
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import {
-    getDatabase, ref, get, child
-  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-
-  const firebaseConfig = {
-    apiKey: "AIzaSyBmM-VyWz3KGWG0Sn9VazDo0sgqKQd7T2o",
-    authDomain: "natiga-ade60.firebaseapp.com",
-    databaseURL: "https://natiga-ade60-default-rtdb.firebaseio.com",
-    projectId: "natiga-ade60",
-    storageBucket: "natiga-ade60.firebasestorage.app",
-    messagingSenderId: "794036498625",
-    appId: "1:794036498625:web:0d98369f3ceeff6aaa2440",
-    measurementId: "G-057Q0LKB55"
-  };
-
-  const app = initializeApp(firebaseConfig);
-  const db = getDatabase(app);
-
+<script>
   const CODES = {
     0: { label: "ناجح دور أول", cls: "pass" },
     1: { label: "دور ثان",       cls: "second" },
@@ -664,40 +645,14 @@
     fail:   "var(--fail)",
     absent: "var(--absent)"
   };
+  const MAX_TOTAL = 320;
 
-  const seatingInput = document.getElementById('seatingInput');
-  const nameField     = document.getElementById('nameField');
-  const nameInput      = document.getElementById('nameInput');
-  const nameHint       = document.getElementById('nameHint');
-  const statusLine     = document.getElementById('statusLine');
-  const resultsEl      = document.getElementById('results');
-  const matchesEl      = document.getElementById('nameMatches');
-  const tabs           = document.querySelectorAll('.tab');
-
+  let seats, totalsX2, cases, namesArr, searchBlob, startOffsets, seatIndex;
+  let N = 0;
   let mode = 'seating';
   let debounceTimer = null;
 
-  // ---- In-browser name search index ----
-  // Names can't be searched "contains anywhere" directly on Firebase RTDB
-  // (it only supports ordered prefix queries), and we're not restructuring
-  // the database. So we load the results node once, cache it in IndexedDB,
-  // and search it fully client-side after that — instant on every next
-  // keystroke and every next visit.
-  const MATCH_SCAN_CAP = 300; // stop scanning once we've found this many
-  let searchIndex = null;
-  let indexLoadingPromise = null;
-
-  function normalizeArabic(s){
-    return String(s)
-      .replace(/[\u064B-\u065F\u0670\u06D6-\u06ED\u0640]/g, '') // tashkeel/tatweel
-      .replace(/[إأآا]/g, 'ا')
-      .replace(/ى/g, 'ي')
-      .replace(/ة/g, 'ه')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .toLowerCase();
-  }
-
+  // IndexedDB caching helpers
   function openCacheDb(){
     return new Promise((resolve, reject) => {
       const req = indexedDB.open('natigaCache', 1);
@@ -729,9 +684,77 @@
     } catch(e){ /* caching is best-effort */ }
   }
 
-  let dbLoadPromise = null;
+  // تطبيع النص العربي للبحث
+  function norm(s){
+    return s
+      .replace(/[ً-ٰٟـ]/g,'')      // تشكيل + تطويل
+      .replace(/[أإآٱ]/g,'ا') // أ إ آ ٱ -> ا
+      .replace(/ى/g,'ي')                      // ى -> ي
+      .replace(/ة/g,'ه')                      // ة -> ه
+      .replace(/ؤ/g,'و')                      // ؤ -> و
+      .replace(/ئ/g,'ي')                      // ئ -> ي
+      .replace(/\s+/g,' ')
+      .trim();
+  }
 
-  async function initDatabase() {
+  function parse(text){
+    const lines = text.split('\n');
+    N = lines.length;
+    if(lines[N-1]==='') N--; // trailing
+    seats = new Int32Array(N);
+    totalsX2 = new Uint16Array(N);
+    cases = new Uint8Array(N);
+    namesArr = new Array(N);
+    const norms = new Array(N);
+    startOffsets = new Int32Array(N);
+    seatIndex = new Map();
+    let pos = 1; // بعد '\n' الأولى
+    for(let i=0;i<N;i++){
+      const line = lines[i];
+      const t1 = line.indexOf('\t');
+      const t2 = line.indexOf('\t', t1+1);
+      const t3 = line.indexOf('\t', t2+1);
+      const seat = +line.slice(0,t1);
+      seats[i] = seat;
+      totalsX2[i] = Math.round(parseFloat(line.slice(t1+1,t2))*2)||0;
+      cases[i] = +line.slice(t2+1,t3)||0;
+      const nm = line.slice(t3+1);
+      namesArr[i] = nm;
+      const nn = norm(nm);
+      norms[i] = nn;
+      startOffsets[i] = pos;
+      pos += nn.length + 1;
+      seatIndex.set(seat, i);
+    }
+    searchBlob = '\n' + norms.join('\n') + '\n';
+  }
+
+  // binary search: أكبر i بحيث startOffsets[i] <= m
+  function recAt(m){
+    let lo=0, hi=N-1, ans=0;
+    while(lo<=hi){ const mid=(lo+hi)>>1;
+      if(startOffsets[mid]<=m){ans=mid; lo=mid+1;} else hi=mid-1; }
+    return ans;
+  }
+
+  // total formatted as integer or decimal representation
+  function totalStr(i){
+    const t = totalsX2[i]/2;
+    return (Number.isInteger(t)? t : t.toFixed(1));
+  }
+  function pctStr(i){ return (totalsX2[i]/2/MAX_TOTAL*100).toFixed(2)+'%'; }
+
+  const seatingInput = document.getElementById('seatingInput');
+  const nameField     = document.getElementById('nameField');
+  const nameInput      = document.getElementById('nameInput');
+  const nameHint       = document.getElementById('nameHint');
+  const statusLine     = document.getElementById('statusLine');
+  const resultsEl      = document.getElementById('results');
+  const matchesEl      = document.getElementById('nameMatches');
+  const tabs           = document.querySelectorAll('.tab');
+
+  // Load database
+  async function load(){
     const overlay = document.getElementById('db-loader-overlay');
     const progressFill = document.getElementById('db-loader-progress-fill');
     const percentageText = document.getElementById('db-loader-percentage');
@@ -741,19 +764,14 @@
     const retryBtn = document.getElementById('db-loader-retry-btn');
 
     // 1. Check if database is already cached in IndexedDB
-    let raw = await idbGet('results');
-    if (raw) {
+    let cachedTsv = await idbGet('tsvData');
+    if (cachedTsv) {
       localStorage.setItem('db_cached', 'true');
-      // Already cached! Initialize index in background & remove overlay instantly.
-      const idx = [];
-      for (const id in raw) {
-        const rec = raw[id];
-        idx.push({ id, rec, norm: normalizeArabic(rec[0]) });
-      }
-      searchIndex = idx;
+      parse(cachedTsv);
       if (overlay) {
         overlay.remove();
       }
+      document.getElementById('dbCount').textContent = N.toLocaleString('ar-EG');
       return;
     }
 
@@ -770,71 +788,55 @@
       bytesText.textContent = '0 MB / 0 MB';
 
       try {
-        const url = firebaseConfig.databaseURL + '/results.json';
-        const response = await fetch(url);
-        if (!response.ok) {
-          throw new Error('HTTP error! status: ' + response.status);
+        const res = await fetch('data.tsv.gz');
+        if(!res.ok) throw new Error('http '+res.status);
+        const totalBytes = +(res.headers.get('content-length')||0);
+        let loaded = 0;
+        
+        const counter = new TransformStream({
+          transform(chunk, ctrl){
+            loaded += chunk.byteLength;
+            let percent = totalBytes ? Math.min(99, Math.round(loaded / totalBytes * 100)) : 0;
+            progressFill.style.width = percent + '%';
+            percentageText.textContent = percent + '%';
+            if (totalBytes) {
+              bytesText.textContent = `${(loaded / (1024 * 1024)).toFixed(2)} MB / ${(totalBytes / (1024 * 1024)).toFixed(2)} MB`;
+            } else {
+              bytesText.textContent = `${(loaded / (1024 * 1024)).toFixed(1)} MB`;
+            }
+            ctrl.enqueue(chunk);
+          }
+        });
+
+        let stream = res.body.pipeThrough(counter);
+        if('DecompressionStream' in window){
+          stream = stream.pipeThrough(new DecompressionStream('gzip'));
         }
-
-        const contentLength = response.headers.get('content-length');
-        // Firebase JSON database Content-Length is exactly 65,951,380 bytes
-        let totalBytes = contentLength ? parseInt(contentLength, 10) : 65951380;
-
-        const reader = response.body.getReader();
-        let receivedBytes = 0;
-        let chunks = [];
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          chunks.push(value);
-          receivedBytes += value.length;
-
-          let percent = Math.min(99, Math.floor((receivedBytes / totalBytes) * 100));
-          
-          progressFill.style.width = percent + '%';
-          percentageText.textContent = percent + '%';
-          bytesText.textContent = `${(receivedBytes / (1024 * 1024)).toFixed(2)} MB / ${(totalBytes / (1024 * 1024)).toFixed(2)} MB`;
-        }
-
+        
+        const text = await new Response(stream).text();
+        
         progressFill.style.width = '100%';
         percentageText.textContent = '100%';
-        bytesText.textContent = `${(receivedBytes / (1024 * 1024)).toFixed(2)} MB / ${(receivedBytes / (1024 * 1024)).toFixed(2)} MB`;
-
-        // Combine chunks
-        let allChunks = new Uint8Array(receivedBytes);
-        let position = 0;
-        for (let chunk of chunks) {
-          allChunks.set(chunk, position);
-          position += chunk.length;
+        if (totalBytes) {
+          bytesText.textContent = `${(totalBytes / (1024 * 1024)).toFixed(2)} MB / ${(totalBytes / (1024 * 1024)).toFixed(2)} MB`;
+        } else {
+          bytesText.textContent = `${(loaded / (1024 * 1024)).toFixed(1)} MB`;
         }
 
-        const decoder = new TextDecoder("utf-8");
-        const jsonText = decoder.decode(allChunks);
-        const rawData = JSON.parse(jsonText);
-
-        // Cache database
-        await idbSet('results', rawData);
+        parse(text);
+        await idbSet('tsvData', text);
         localStorage.setItem('db_cached', 'true');
 
-        // Build index
-        const idx = [];
-        for (const id in rawData) {
-          const rec = rawData[id];
-          idx.push({ id, rec, norm: normalizeArabic(rec[0]) });
-        }
-        searchIndex = idx;
-
-        // Dismiss overlay
         if (overlay) {
           overlay.classList.add('fade-out');
           setTimeout(() => overlay.remove(), 500);
         }
+        document.getElementById('dbCount').textContent = N.toLocaleString('ar-EG');
 
       } catch (error) {
         console.error('Failed to load database:', error);
-        errorMsg.textContent = 'حدث خطأ أثناء تحميل قاعدة البيانات: ' + error.message;
+        errorMsg.textContent = 'حدث خطأ أثناء تحميل قاعدة البيانات: ' + error.message + 
+          '. تأكد من فتح الموقع عبر خادم (web server) وليس كملف محلي.';
         errorDiv.style.display = 'block';
       }
     }
@@ -844,19 +846,9 @@
   }
 
   // Start initialization immediately
-  dbLoadPromise = initDatabase();
+  load();
 
-  async function ensureSearchIndex() {
-    if (searchIndex) return searchIndex;
-    if (dbLoadPromise) {
-      await dbLoadPromise;
-      return searchIndex;
-    }
-    dbLoadPromise = initDatabase();
-    await dbLoadPromise;
-    return searchIndex;
-  }
-
+  // Tab switching
   tabs.forEach(tab => {
     tab.addEventListener('click', () => {
       tabs.forEach(t => { t.classList.remove('active'); t.setAttribute('aria-selected','false'); });
@@ -872,14 +864,14 @@
         seatingInput.parentElement.style.display = '';
         nameField.style.display = 'none';
         nameHint.style.display = 'none';
+        seatingInput.value = '';
         seatingInput.focus();
       } else {
         seatingInput.parentElement.style.display = 'none';
         nameField.style.display = '';
         nameHint.style.display = '';
+        nameInput.value = '';
         nameInput.focus();
-        // warm the cache in the background so typing feels instant
-        ensureSearchIndex().catch(() => {});
       }
     });
   });
@@ -910,15 +902,19 @@
     matchesEl.style.display = 'none';
   }
 
-  function renderRecord(seatingNo, record){
-    const [name, degree, code] = record;
+  function renderRecordByIndex(i){
+    const name = namesArr[i];
+    const degree = totalStr(i);
+    const code = cases[i];
+    const seatingNo = seats[i];
+    
     const info = CODES[code] || { label: 'غير معروف', cls: 'absent' };
     const bar = BAR_COLOR[info.cls];
 
     const degNum = parseFloat(degree);
     const hasPercentage = !isNaN(degNum) && degNum >= 0;
     const percentageHtml = hasPercentage 
-      ? `<div class="row degree"><span class="k">النسبة المئوية</span><span class="v" style="color: var(--gold); font-size: 22px; font-weight: 800;">${((degNum / 320) * 100).toFixed(2)}%</span></div>`
+      ? `<div class="row degree"><span class="k">النسبة المئوية</span><span class="v" style="color: var(--gold); font-size: 22px; font-weight: 800;">${((degNum / MAX_TOTAL) * 100).toFixed(2)}%</span></div>`
       : '';
 
     const card = document.createElement('div');
@@ -931,7 +927,7 @@
       </div>
       <div class="row name"><span class="k">الاسم</span><span class="v">${escapeHtml(name)}</span></div>
       <div class="row"><span class="k">رقم الجلوس</span><span class="v" style="direction: ltr;">${seatingNo}</span></div>
-      <div class="row degree"><span class="k">المجموع</span><span class="v">${degree} / 320</span></div>
+      <div class="row degree"><span class="k">المجموع</span><span class="v">${degree} / ${MAX_TOTAL}</span></div>
       ${percentageHtml}
     `;
     resultsEl.appendChild(card);
@@ -943,7 +939,7 @@
     }[s]));
   }
 
-  async function searchBySeating(raw){
+  function searchBySeating(raw){
     const seatingNo = raw.trim();
     if (!seatingNo) { resultsEl.innerHTML = ''; statusLine.textContent = ''; return; }
     if (!/^\d+$/.test(seatingNo)) {
@@ -951,27 +947,27 @@
       return;
     }
     showLoading();
-    try {
-      const snap = await get(child(ref(db), 'results/' + seatingNo));
-      if (snap.exists()) {
-        resultsEl.innerHTML = '';
-        renderRecord(seatingNo, snap.val());
-        statusLine.textContent = '';
-      } else {
-        showEmpty('لا توجد نتيجة لرقم الجلوس هذا. تأكد من الرقم وحاول مرة أخرى.');
-      }
-    } catch (e) {
-      showError('تعذر الاتصال بقاعدة البيانات. تحقق من الاتصال بالإنترنت وحاول مرة أخرى.');
-      console.error(e);
+    
+    const seat = parseInt(seatingNo, 10);
+    const i = seatIndex.get(seat);
+    if (i !== undefined) {
+      resultsEl.innerHTML = '';
+      renderRecordByIndex(i);
+      statusLine.textContent = '';
+    } else {
+      showEmpty('لا توجد نتيجة لرقم الجلوس هذا. تأكد من الرقم وحاول مرة أخرى.');
     }
   }
 
-  function renderMatchList(matches, hitCap){
+  function renderMatchList(found, hitCap){
     matchesEl.innerHTML = '';
     matchesEl.style.display = 'flex';
     resultsEl.innerHTML = '';
-    matches.forEach(({ id, rec }) => {
-      const [name, , code] = rec;
+    found.forEach(i => {
+      const name = namesArr[i];
+      const code = cases[i];
+      const seat = seats[i];
+      
       const info = CODES[code] || { label: 'غير معروف', cls: 'absent' };
       const row = document.createElement('div');
       row.className = 'match-row';
@@ -980,11 +976,11 @@
       row.innerHTML = `
         <span class="dot" style="background:${BAR_COLOR[info.cls]}"></span>
         <span class="mname">${escapeHtml(name)}</span>
-        <span class="mseat">${id}</span>
+        <span class="mseat">${seat}</span>
       `;
       const pick = () => {
         resultsEl.innerHTML = '';
-        renderRecord(id, rec);
+        renderRecordByIndex(i);
         matchesEl.style.display = 'none';
         statusLine.textContent = '';
         resultsEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -994,12 +990,12 @@
       matchesEl.appendChild(row);
     });
     statusLine.textContent = hitCap
-      ? `تم عرض أول ${MATCH_SCAN_CAP} نتيجة، دقّق الاسم لتضييق البحث.`
-      : `عدد النتائج: ${matches.length} — اضغط على اسم لعرض النتيجة`;
+      ? `تم عرض أول 300 نتيجة، دقّق الاسم لتضييق البحث.`
+      : `عدد النتائج: ${found.length} — اضغط على اسم لعرض النتيجة`;
     statusLine.classList.remove('error');
   }
 
-  async function searchByName(raw){
+  function searchByName(raw){
     const term = raw.trim();
     if (!term) {
       resultsEl.innerHTML = '';
@@ -1013,33 +1009,34 @@
       return;
     }
     showLoading();
-    try {
-      const idx = await ensureSearchIndex();
-      const q = normalizeArabic(term);
-      const matches = [];
-      let hitCap = false;
-      for (const item of idx) {
-        if (item.norm.includes(q)) {
-          matches.push(item);
-          if (matches.length >= MATCH_SCAN_CAP) { hitCap = true; break; }
-        }
-      }
-      if (matches.length === 0) {
-        showEmpty('لا يوجد طالب بهذا الاسم. تأكد من كتابة الاسم بشكل صحيح.');
-      } else if (matches.length === 1) {
-        resultsEl.innerHTML = '';
-        matchesEl.innerHTML = '';
-        matchesEl.style.display = 'none';
-        renderRecord(matches[0].id, matches[0].rec);
-        statusLine.textContent = '';
-        statusLine.classList.remove('error');
-      } else {
-        renderMatchList(matches, hitCap);
-      }
-    } catch (e) {
-      showError('تعذر تحميل بيانات الأسماء. تحقق من الاتصال بالإنترنت وحاول مرة أخرى.');
-      console.error(e);
+    
+    const q = norm(term);
+    const MATCH_SCAN_CAP = 300;
+    const found = [];
+    let seen = -1, from = 0, idx;
+    while((idx = searchBlob.indexOf(q, from)) !== -1){
+      const rec = recAt(idx);
+      if(rec !== seen){ found.push(rec); seen = rec; if(found.length>=MATCH_SCAN_CAP) break; }
+      from = idx + 1;
     }
+    
+    if (found.length === 0) {
+      showEmpty('لا يوجد طالب بهذا الاسم. تأكد من كتابة الاسم بشكل صحيح.');
+      return;
+    }
+    
+    if (found.length === 1) {
+      resultsEl.innerHTML = '';
+      matchesEl.innerHTML = '';
+      matchesEl.style.display = 'none';
+      renderRecordByIndex(found[0]);
+      statusLine.textContent = '';
+      statusLine.classList.remove('error');
+      return;
+    }
+    
+    found.sort((a,b)=>totalsX2[b]-totalsX2[a]);
+    renderMatchList(found, found.length >= MATCH_SCAN_CAP);
   }
 
   seatingInput.addEventListener('input', () => {
@@ -1050,6 +1047,20 @@
   nameInput.addEventListener('input', () => {
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => searchByName(nameInput.value), 350);
+  });
+
+  seatingInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      clearTimeout(debounceTimer);
+      searchBySeating(seatingInput.value);
+    }
+  });
+
+  nameInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      clearTimeout(debounceTimer);
+      searchByName(nameInput.value);
+    }
   });
 </script>
 </body>
